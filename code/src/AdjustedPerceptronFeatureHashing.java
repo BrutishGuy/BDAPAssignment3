@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Random;
 
 
 /**
@@ -14,10 +15,12 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
 
     private int logNbOfBuckets;
     private int nbOfBuckets;
+    private int num_updates;
     private double learningRate;
     private double bias;
     private double[] weights; //weights[i]: The weight for n-grams that hash to value i
     private double sum_error;
+    private Random rand;
     /* FILL IN HERE */
 
     /**
@@ -37,6 +40,7 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
         this.learningRate = learningRate;
         this.nbOfBuckets=((int) Math.pow(2, logNbOfBuckets));
         this.sum_error = 0;
+        this.num_updates = 0;
         bias = 0;
         weights = new double[this.nbOfBuckets];
         // here we initialize the weights to random values between 0 and 1
@@ -62,7 +66,9 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
         this.learningRate = learningRate;
         this.nbOfBuckets=((int) Math.pow(2, logNbOfBuckets));
         this.sum_error = 0;
+        this.num_updates = 0;
         this.threshold = threshold;
+
         bias = 0;
         weights = new double[this.nbOfBuckets];
         // here we initialize the weights to random values between 0 and 1
@@ -114,6 +120,7 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
     public void update(LabeledText labeledText){
         super.update(labeledText);
         
+        
         int feature_label = labeledText.label;
         int gradient_direction;
         if (feature_label == 0) {
@@ -122,6 +129,8 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
         } else {
             gradient_direction = 1;
         }
+        
+        this.num_updates += 1;
         
         int hashValue;
 
@@ -173,19 +182,31 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
         int m = 1;
         // updating the weights, with an L2 penalty
 	bias = bias + this.learningRate * error;
-        double L2_regularization_penalty = 0;
-	for (int weight_i = 0; weight_i < this.nbOfBuckets; weight_i++) {
-            L2_regularization_penalty +=  Math.pow(weights[weight_i], 2);
-        }  
-        L2_regularization_penalty *= lambda / (2 * m);
+        //double L2_regularization_penalty = 0;
+	//for (int weight_i = 0; weight_i < this.nbOfBuckets; weight_i++) {
+        //    L2_regularization_penalty +=  Math.pow(weights[weight_i], 2);
+        //}  
+        //L2_regularization_penalty *= lambda / (2 * m);
         
 	for (int feature_i = 0; feature_i < this.nbOfBuckets; feature_i++) {
             if (this.threshold != 0.0) {
-                weights[feature_i] = weights[feature_i] + this.learningRate * error * error_grad *  sigmoid_activation_derivative(weighted_sum) * feature_vector[feature_i];
+                weights[feature_i] = weights[feature_i] + this.learningRate * error * error_grad *  sigmoid_activation_derivative(weighted_sum) * feature_vector[feature_i] + lambda * weights[feature_i];
             } else {
-                weights[feature_i] = weights[feature_i] + this.learningRate * error * error_grad * feature_vector[feature_i];
+                weights[feature_i] = weights[feature_i] + this.learningRate * error * error_grad * feature_vector[feature_i] + lambda * weights[feature_i];
             }
         }
+        
+        if (this.num_updates >= 10000) {
+            //weight drop out randomly
+            int numWeightsDrop = (int) 0.1 * this.nbOfBuckets;
+
+            for (int weight_i = 0; weight_i < numWeightsDrop; weight_i++) {
+                int drop = rand.nextInt(this.nbOfBuckets);
+                weights[drop] = 0;
+            }
+            this.num_updates = 0;
+        }
+
         				     
     }
 
