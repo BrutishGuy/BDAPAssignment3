@@ -18,7 +18,7 @@ OUT=out
 
 STOPWORDS=./stop-word-list_stanford.txt
 
-MAX_N=1
+MAX_N=4
 LOG_NB_BUCKETS=15
 NB_HASHES=5
 THRESHOLD=0.5
@@ -109,10 +109,10 @@ pcms: $(class_d)/PerceptronCountMinSketch.class
 
 adpfh_small: $(class_d)/AdjustedPerceptronFeatureHashing.class
 	@echo "Testing enchanched perceptron classification with feature hashing on a subset of the data"
-	rm -f $(SMALL_OUT).pfh.*
+	rm -f $(SMALL_OUT).adpfh.*
 	time java AdjustedPerceptronFeatureHashing $(SMALL_DATA) $(STOPWORDS) $(LOG_NB_BUCKETS) $(THRESHOLD) $(LEARNING_RATE) $(SMALL_OUT) $(SMALL_PERIOD) $(MAX_N) -writeOutAllPredictions
 
 adpfh: $(class_d)/AdjustedPerceptronFeatureHashing.class
 	@echo "Testing perceptron classification with count-min sketch on the complete data"
-	rm -f $(OUT).pcms.*
+	rm -f $(OUT).adpfh.*
 	time java AdjustedPerceptronFeatureHashing $(DATA) $(STOPWORDS) $(LOG_NB_BUCKETS) $(THRESHOLD) $(LEARNING_RATE) $(OUT) $(PERIOD) $(MAX_N)
