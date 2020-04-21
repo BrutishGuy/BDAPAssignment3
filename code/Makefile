@@ -18,11 +18,11 @@ OUT=out
 
 STOPWORDS=./stop-word-list_stanford.txt
 
-MAX_N=4
+MAX_N=3
 LOG_NB_BUCKETS=15
 NB_HASHES=5
 THRESHOLD=0.5
-LEARNING_RATE=0.01
+LEARNING_RATE=0.001
 
 # Compilation  ###############################################################
 
@@ -54,7 +54,8 @@ PROG= \
 			NaiveBayesFeatureHashing.class \
 			NaiveBayesCountMinSketch.class \
 			PerceptronFeatureHashing.class \
-			PerceptronCountMinSketch.class
+			PerceptronCountMinSketch.class \
+			AdjustedPerceptronFeatureHashing.class
 LIST=$(addprefix $(class_d)/, $(PROG))
 	
 all: $(class_d) $(LIST) 
