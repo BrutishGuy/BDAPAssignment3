@@ -20,6 +20,10 @@ public class PerceptronCountMinSketch extends OnlineTextClassifier{
     private int nbOfBuckets;
     private double learningRate;
     private double bias;
+    private int prime;
+    private int seed;
+    private int[][] hashAB;		//hashAB[h][0] and hashAB[h][1] are the resp. constants 'a' and 'b' used in universal hashing for the h'th hash function. 
+    
     private double sum_error;
     private double[][] weights; // weights[h][i]: The h'th weight estimate for n-grams that hash to value i for the h'th hash function
 
@@ -48,6 +52,17 @@ public class PerceptronCountMinSketch extends OnlineTextClassifier{
         this.sum_error = 0;
         bias = 0;
         weights = new double[this.nbOfHashes][this.nbOfBuckets];
+        this.prime = Primes.findLeastPrimeNumber(this.nbOfBuckets);
+    	this.seed = (int) Math.random() * 1000;
+    	
+    	// Init hashAB
+    	hashAB = new int[this.nbOfHashes][2];
+    	Random rand = new Random();
+    	for (int i = 0; i < this.nbOfHashes; i++) {
+    		hashAB[i][0] = rand.nextInt(this.prime - 1) + 1; // a != 0
+    		hashAB[i][1] = rand.nextInt(this.prime);
+    	}
+        
         // here we initialize the weights to random values between 0 and 1
         for (int hash_i = 0; hash_i < this.nbOfHashes; hash_i++) {
             for (int j = 0; j < this.nbOfBuckets; j++) {
@@ -103,28 +118,24 @@ public class PerceptronCountMinSketch extends OnlineTextClassifier{
      */
     private int hash(String str, int h){
         int v;
-        
-        // we differentiate out Murmur hashes by adjusting the seeds
-        // this will give us unique hashes.
-        // we keep the seed fixed rather than random for reproducibility.
-        int seed = 1 + h * h;
-        
-        if (this.logNbOfBuckets <= 32) {
-            v = MurmurHash.hash32(str, seed);
-            //System.out.println(Integer.toString(v));
-            //System.out.println(Integer.toString(this.nbOfBuckets));
-            v = v & (this.nbOfBuckets - 1);
-            //System.out.println(Integer.toString(v));
 
-        } else  {
-            long long_v = MurmurHash.hash64(str, seed);
-            long_v = long_v % this.nbOfBuckets;
-            v = Math.toIntExact(long_v);
+        if (h < 0 || h >= nbOfBuckets){
+        	v = -1;
+        	System.out.println("Failure in NB CMS hash(): h out of range");
+        } else {
+        	
+        	int x = MurmurHash.hash32(str, seed);
+        	int a = hashAB[h][0];
+        	int b = hashAB[h][1];
+        	
+        	int y = HelperFunctions.posMod(a*x + b, prime);
+        	v = HelperFunctions.posMod(y, nbOfBuckets);
+        	
         }
-        
+        	
+
         return v;
     }
-
     /**
      * This method will update the parameters of your model using the incoming mail.
      *

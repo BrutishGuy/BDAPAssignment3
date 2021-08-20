@@ -14,9 +14,11 @@ import java.util.Set;
 public class NaiveBayesFeatureHashing extends OnlineTextClassifier{
 
     public int logNbOfBuckets;
+    private int nbOfBuckets;
     public int[][] counts; // counts[c][i]: The count of n-grams in e-mails of class c (spam: c=1) that hash to value i
-    public int[] classCounts; //classCounts[c] the count of e-mails of class c (spam: c=1)
-    public int nbOfBuckets;
+    private int[] ngramCounts; //ngramCounts[c] the count of ngrams of class c (spam: c=1). Equal to sum over all columns of 'counts'.
+    private int[] classCounts; //classCounts[c] the count of e-mails of class c (spam: c=1)
+    private int seed;
     /* FILL IN HERE */
 
     /**
@@ -37,7 +39,9 @@ public class NaiveBayesFeatureHashing extends OnlineTextClassifier{
         this.nbOfBuckets=((int) Math.pow(2, logNbOfBuckets));
 
         this.counts = new int[2][this.nbOfBuckets];
-        this.classCounts = new int[2];
+        this.ngramCounts = new int[2];
+    	this.classCounts = new int[2];
+    	this.seed = (int) Math.random() * 1000;
         
         // Laplace estimation
         for (int c = 0; c <= 1; c ++) {
@@ -46,6 +50,11 @@ public class NaiveBayesFeatureHashing extends OnlineTextClassifier{
                 this.counts[c][i] += 1;
             }
         }
+        ngramCounts[0] = nbOfBuckets;
+    	ngramCounts[1] = nbOfBuckets;
+    	classCounts[0] = 1;
+    	classCounts[1] = 1;
+        
     }
 
     /**
@@ -58,26 +67,11 @@ public class NaiveBayesFeatureHashing extends OnlineTextClassifier{
      * @param str The string to calculate the hash function for
      * @return the hash value of the h'th hash function for string str
      */
-    private int hash(String str){
-        int v;
-        int seed = 1;
+    public int hash(String str){
 
-        if (this.logNbOfBuckets <= 32) {
-            v = MurmurHash.hash32(str, seed);
-            //System.out.println(Integer.toString(v));
-            //System.out.println(Integer.toString(this.nbOfBuckets));
-            v = v & (this.nbOfBuckets - 1);
-            //System.out.println(Integer.toString(v));
-
-        } else  {
-            long long_v = MurmurHash.hash64(str, seed);
-            long_v = long_v % this.nbOfBuckets;
-            v = Math.toIntExact(long_v);
-            v = v & (this.nbOfBuckets - 1);
-
-        }
-        
+    	int v = HelperFunctions.posMod(MurmurHash.hash32(str, seed), nbOfBuckets);
         return v;
+        
     }
 
     /**
@@ -91,18 +85,17 @@ public class NaiveBayesFeatureHashing extends OnlineTextClassifier{
     public void update(LabeledText labeledText){
         super.update(labeledText);
 
-        int feature_label = labeledText.label;        
-        int hashValue;
-
-        Set<String> feature_ngrams = labeledText.text.ngrams;
+        int feature_label = labeledText.label;
         
-        for (String ngram: feature_ngrams) {
-            hashValue = hash(ngram);
-            this.counts[feature_label][hashValue] += 1;
-        }
+        // Increment total spam/ham counter
+        classCounts[feature_label]++;
         
-        this.classCounts[feature_label] += 1;
+        // Update ngramCounts counter
+        ngramCounts[feature_label] += labeledText.text.ngrams.size();
         
+        // Handle n-gram counters
+        for (String ngram : labeledText.text.ngrams)
+        	counts[feature_label][hash(ngram)]++;
     }
 
 
@@ -118,44 +111,46 @@ public class NaiveBayesFeatureHashing extends OnlineTextClassifier{
      */
     @Override
     public double makePrediction(ParsedText text) {
-        int hashValue;
+        double logJointProbSpam = logJointProb(text,1);
+        double logJointProbHam = logJointProb(text,0);
         
-        //this is okay not to use log sum formula, the counts and logs are not between 0 and 1
-        double LogPrS = Math.log(this.classCounts[1]) - log_sum(Math.log(this.classCounts[0]), Math.log(this.classCounts[1]));
-        double LogPrH = Math.log(this.classCounts[0]) - log_sum(Math.log(this.classCounts[0]), Math.log(this.classCounts[1]));
+        double logPr = logJointProbSpam - HelperFunctions.logSum(logJointProbSpam,logJointProbHam);
         
-        // we now do the following formula:
-        // log(Pr(S | text)) = log(Pr(S)) + sum_over_all_words_in_text(log(Pr(word|S)) - log(product over all words in text(Pr(word|S) + Pr(word|H))) 
-        Set<String> feature_ngrams = text.ngrams;
+        // Convert log probability to probability
+        double pr = Math.exp(logPr);
         
-        // initialize to 0 for summation
-        double PrAllWordsinS = 0.0;
-        double PrAllWordsNotS = 0.0;
-        for (String ngram: feature_ngrams) {
-            hashValue = hash(ngram);
-            PrAllWordsinS += Math.log((double)(this.counts[1][hashValue] + 1)/(double)(this.classCounts[1] + 2));
-            PrAllWordsNotS += Math.log((double)(this.counts[0][hashValue] + 1)/(double)(this.classCounts[0] + 2));
-            //System.out.println(Double.toString((double)(this.counts[1][hashValue] + 1)/(double)(this.classCounts[1] + 2)));
+        if (pr < 0 || pr > 1) {
+            System.out.println("FAILURE: makePrediction returned invalid probability score, which should be in [0,1]: Probability = " + pr);
         }
-        //pr = LogPrS + PrAllWordsinS - log_sum(PrAllWordsinS, PrAllWordsNotS);
-        double prS = LogPrS + PrAllWordsinS;
-        double prH = LogPrH + PrAllWordsNotS;
-        /*double pr;
-        if (prS > prH) {
-            pr = 0.6;
-        } else {
-            pr = 0.4;
-        }*/
-        //double pr = Math.abs(prS)/(Math.abs(prS) + Math.abs(prH));        //System.out.println("Done----------------------------------------------------------");
-        double pr = Math.exp(prS)/(Math.exp(prS) + Math.exp(prH));        //System.out.println("Done----------------------------------------------------------");
-        //double pr = prS/(prS + prH);
-        //System.out.println(Double.toString(PrAllWordsinS));
+        
         return pr;
     }
+    
+    /**
+     * Calculates the log of the joint prob. distribution P(Text, Class = c)
+     * @param text
+     * @param c
+     * @return
+     */
+    public double logJointProb(ParsedText text, int c) {
+        double result = 0;
+        
+        // ln(Pr[Text = given set of n-grams | S = c])
+        for (String ngram : text.ngrams) {
+        	int hashValue = hash(ngram);
+        	result += Math.log((double) counts[c][hashValue]);
+        }
+        result -= text.ngrams.size() * Math.log((double) ngramCounts[c]);
+        
+        // ln(Pr[S = c])
+        result += Math.log(classCounts[c]) - HelperFunctions.logSum(Math.log(classCounts[0]), Math.log(classCounts[1]));
 
-    public double log_sum(double log_a, double log_b) {
-        return log_a + Math.log(1 + Math.exp(log_b - log_a));
+        return result; 	
     }
+
+    //public double logSum(double log_a, double log_b) {
+    //    return log_a + Math.log(1 + Math.exp(log_b - log_a));
+    //}
 
     /**
      * This runs your code.

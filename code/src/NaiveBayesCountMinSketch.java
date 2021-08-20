@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.util.Random;
 import java.util.Set;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * This class is a stub for naive Bayes with count-min sketch
@@ -16,10 +18,16 @@ public class NaiveBayesCountMinSketch extends OnlineTextClassifier{
 
     private int nbOfHashes;
     private int logNbOfBuckets;
+    private int[][] hashAB; //hashAB[h][0] and hashAB[h][1] are the resp. constants 'a' and 'b' used in universal hashing for the h'th hash function. 
+
     private int[][][] counts; // counts[c][h][i]: The count of n-grams in e-mails of class c (spam: c=1)
                               // that hash to value i for the h'th hash function.
     private int[] classCounts; //classCounts[c] the count of e-mails of class c (spam: c=1)
+    private int[] ngramCounts; //ngramCounts[c] the count of ngrams of class c (spam: c=1)
     private int nbOfBuckets;
+    private int prime;
+    private int seed;
+    
     /* FILL IN HERE */
 
     /**
@@ -38,21 +46,38 @@ public class NaiveBayesCountMinSketch extends OnlineTextClassifier{
         this.nbOfHashes = nbOfHashes;
         this.logNbOfBuckets=logNbOfBuckets;
         this.threshold = threshold;
-
+        this.prime = Primes.findLeastPrimeNumber(this.nbOfBuckets);
+    	this.seed = (int) Math.random() * 1000;
+        
         this.nbOfBuckets =((int) Math.pow(2, logNbOfBuckets));
 
         this.counts = new int[2][this.nbOfHashes][this.nbOfBuckets];
         this.classCounts = new int[2];
         
-        // Laplace estimation
-        for (int c = 0; c <= 1; c ++) {
-            this.classCounts[c] += 1;
-            for (int hash_i = 0; hash_i < this.nbOfHashes; hash_i++) {
-                for (int i = 0; i < nbOfBuckets; i++) {
-                    this.counts[c][hash_i][i] += 1;
-                }
-            }
-        }
+        // Init hashAB
+    	hashAB = new int[this.nbOfHashes][2];
+    	Random rand = new Random();
+    	for (int i = 0; i < this.nbOfHashes; i++) {
+    		hashAB[i][0] = rand.nextInt(this.prime - 1) + 1; // a != 0
+    		hashAB[i][1] = rand.nextInt(this.prime);
+    	}
+    	
+    	// Init counts
+    	counts = new int[2][nbOfHashes][nbOfBuckets];
+    	for (int c = 0; c < 2; c++)
+    		for (int h = 0; h < nbOfHashes; h++)
+    			for (int i = 0; i < nbOfBuckets; i++)
+    				counts[c][h][i] = 1;
+        
+        // Init ngramCounts
+    	ngramCounts = new int[2];
+    	ngramCounts[0] = nbOfBuckets;
+    	ngramCounts[1] = nbOfBuckets;
+    	
+    	// Init classCounts
+    	classCounts = new int[2];
+    	classCounts[0] = 1;
+    	classCounts[1] = 1;
     }
 
     /**
@@ -69,31 +94,24 @@ public class NaiveBayesCountMinSketch extends OnlineTextClassifier{
      */
     private int hash(String str, int h){
         int v;
-        
-        // we differentiate out Murmur hashes by adjusting the seeds
-        // this will give us unique hashes.
-        // we keep the seed fixed rather than random for reproducibility.
-        int seed = 1 + h * h;
-        
-        if (this.logNbOfBuckets <= 32) {
-            v = MurmurHash.hash32(str, seed);
-            //System.out.println(Integer.toString(v));
-            //System.out.println(Integer.toString(this.nbOfBuckets));
-            v = v & (this.nbOfBuckets - 1);
-            
-            //System.out.println(Integer.toString(v));
 
-        } else  {
-            long long_v = MurmurHash.hash64(str, seed);
-            long_v = long_v % this.nbOfBuckets;
-            v = Math.toIntExact(long_v);
-            v = v & (this.nbOfBuckets - 1);
-
+        if (h < 0 || h >= nbOfBuckets){
+        	v = -1; // will cause system exception OutOfBounds
+        	System.out.println("Failure in NB CMS hash(): h out of range");
+        } else {
+        	
+        	int x = MurmurHash.hash32(str, seed);
+        	int a = hashAB[h][0];
+        	int b = hashAB[h][1];
+        	
+        	int y = HelperFunctions.posMod(a*x + b, prime);
+        	v = HelperFunctions.posMod(y, nbOfBuckets);
+        	
         }
-        
+        	
+
         return v;
     }
-
     /**
      * This method will update the parameters of your model using the incoming mail.
      *
@@ -105,19 +123,18 @@ public class NaiveBayesCountMinSketch extends OnlineTextClassifier{
     public void update(LabeledText labeledText){
         super.update(labeledText);
 
-        int feature_label = labeledText.label;        
-        int hashValue;
-
-        Set<String> feature_ngrams = labeledText.text.ngrams;
+        int feature_label = labeledText.label;
         
-        for (String ngram: feature_ngrams) {
-            for (int hash_i = 0; hash_i < this.nbOfHashes; hash_i++) {
-                hashValue = hash(ngram, hash_i);
-                this.counts[feature_label][hash_i][hashValue] += 1;
-            }
-        }
+        // update classCounts
+        classCounts[feature_label]++;
         
-        this.classCounts[feature_label] += 1;
+        // update ngramCounts
+        ngramCounts[feature_label] += labeledText.text.ngrams.size();
+        
+        // update counts
+        for (String ngram : labeledText.text.ngrams)
+        	for (int h = 0; h < nbOfHashes; h++)
+        		counts[feature_label][h][hash(ngram,h)]++;
         
     }
 
@@ -134,46 +151,88 @@ public class NaiveBayesCountMinSketch extends OnlineTextClassifier{
      */
     @Override
     public double makePrediction(ParsedText text) {
-        int hashValue;
+        double pr = 0.0;
         
-        //this is okay not to use log sum formula, the counts and logs are not between 0 and 1
-        double LogPrS = Math.log(this.classCounts[1]) - log_sum(Math.log(this.classCounts[0]), Math.log(this.classCounts[1]));
-        double LogPrH = Math.log(this.classCounts[0]) - log_sum(Math.log(this.classCounts[0]), Math.log(this.classCounts[1]));
-        
-        // we now do the following formula:
-        // log(Pr(S | text)) = log(Pr(S)) + sum_over_all_words_in_text(log(Pr(word|S)) - log(product over all words in text(Pr(word|S) + Pr(word|H))) 
-        Set<String> feature_ngrams = text.ngrams;
-        
-        // initialize to 1 for multiplication
-        double PrAllWordsinS = 0.0;
-        double PrAllWordsNotS = 0.0;
-        for (String ngram: feature_ngrams) {
-            double[] PrAllWordsinSVec = new double[this.nbOfHashes];
-            double[] PrAllWordsNotSVec = new double[this.nbOfHashes];
-            for (int hash_i = 0; hash_i < this.nbOfHashes; hash_i++) {
-                hashValue = hash(ngram, hash_i);
-                PrAllWordsinSVec[hash_i] = this.counts[1][hash_i][hashValue];
-                PrAllWordsNotSVec[hash_i] = this.counts[0][hash_i][hashValue];
-            }
-            double MinAllWordsinS = Arrays.stream(PrAllWordsinSVec).min().getAsDouble();
-            double MinAllWordsNotS = Arrays.stream(PrAllWordsNotSVec).min().getAsDouble();
-            PrAllWordsinS += Math.log((double)(MinAllWordsinS + 1)/(double)(this.classCounts[1] + 2));
-            PrAllWordsNotS += Math.log((double)(MinAllWordsNotS + 1)/(double)(this.classCounts[0] + 2));
+        List<String> ngramList = new ArrayList<String>(text.ngrams);
 
+        // minCount[c][ngram] is the minimum count over all hash functions given class c and ngram
+        int[][] minCount = new int[2][ngramList.size()];
+        for (int i = 0; i < ngramList.size(); i++) {
+        	
+        	String ngram = ngramList.get(i);
+        	int[] min = getMinCount(ngram);
+        	minCount[0][i] = min[0];
+        	minCount[1][i] = min[1];
+        	
         }
-        double prS = LogPrS + PrAllWordsinS;
-        double prH = LogPrH + PrAllWordsNotS;
         
-        double pr = Math.exp(prS)/(Math.exp(prS) + Math.exp(prH));        //System.out.println("Done----------------------------------------------------------");
-        //System.out.println(Double.toString(pr));
-
+        // from this point, similar to Feature Hashing
+        double logJPDSpam = logJointProb(minCount[1],1);
+        double logJPDHam = logJointProb(minCount[0],0);
+        
+        double logPr = logJPDSpam - HelperFunctions.logSum(logJPDSpam,logJPDHam);
+        
+        // Convert logPr to pr
+        pr = Math.exp(logPr);
+        
+        // Testing
+        if (pr < 0 || pr > 1)
+        	System.out.println("FAILURE IN NB-CMS makePrediction(): pr = " + pr);
+        
+        
+        
         return pr;
     }
 
-    public double log_sum(double log_a, double log_b) {
-        return log_a + Math.log(1 + Math.exp(log_b - log_a));
-    }
+    /**
+     * Calculates the minimum count of ngram for both spam and ham.
+     * @param ngram
+     * @return An array with 2 elements, one minimum count for each class (ham and spam).
+     */
+    private int[] getMinCount(String ngram) {
+    	int[] min = new int[2];
+    	min[0] = ngramCounts[0];
+    	min[1] = ngramCounts[1];
+    	
+    	for (int h = 0; h < nbOfHashes; h++) {
+    		int hashValue = hash(ngram,h);
+    		int countHam = counts[0][h][hashValue];
+    		int countSpam = counts[1][h][hashValue];
+    		
+    		if (min[0] > countHam)
+    			min[0] = countHam;
+    		
+    		if (min[1] > countSpam)
+    			min[1] = countSpam;
+    		
+    	}
 
+    	return min;
+    }
+    
+    /**
+     * Calculates the log of the joint prob. distribution P(Text, Class = c)
+     * @param text
+     * @param c
+     * @return
+     */
+    public double logJointProb(int[] minCount, int c) {
+        double result = 0;
+        
+        // ln(Pr[Text = given set of n-grams | S = c])
+        for (int count : minCount) {
+            // Note that probability P[ngram|c] = minCounts[ngram] / ngramCounts[c]
+        	result += Math.log((double) count);
+        }
+        result -= minCount.length * Math.log((double) ngramCounts[c]);
+        
+        // ln(Pr[S = c])
+        result += Math.log(classCounts[c]) - HelperFunctions.logSum(Math.log(classCounts[0]), Math.log(classCounts[1]));
+    	
+        
+        return result;
+    	
+    }
     /**
      * This runs your code.
      */

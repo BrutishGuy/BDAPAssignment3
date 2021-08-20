@@ -21,6 +21,7 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
     private double[] weights; //weights[i]: The weight for n-grams that hash to value i
     private double sum_error;
     private Random rand;
+    private int seed;
     /* FILL IN HERE */
 
     /**
@@ -43,6 +44,7 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
         this.num_updates = 0;
         bias = 0;
         weights = new double[this.nbOfBuckets];
+        this.seed = (int) Math.random() * 1000;
         // here we initialize the weights to random values between 0 and 1
         for (int i = 0; i < this.nbOfBuckets; i++) {
             weights[i] = 0;//Math.random();
@@ -68,6 +70,7 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
         this.sum_error = 0;
         this.num_updates = 0;
         this.threshold = threshold;
+        this.seed = (int) Math.random() * 1000;
 
         bias = 0;
         weights = new double[this.nbOfBuckets];
@@ -87,26 +90,11 @@ public class AdjustedPerceptronFeatureHashing extends OnlineTextClassifier{
      * @param str The string to calculate the hash function for
      * @return the hash value of the h'th hash function for string str
      */
-    private int hash(String str){
-        int v;
-        int seed = 1;
-
-        if (this.logNbOfBuckets <= 32) {
-            v = MurmurHash.hash32(str, seed);
-            //System.out.println(Integer.toString(v));
-            //System.out.println(Integer.toString(this.nbOfBuckets));
-            v = v & (this.nbOfBuckets - 1);
-            //System.out.println(Integer.toString(v));
-
-        } else  {
-            long long_v = MurmurHash.hash64(str, seed);
-            long_v = long_v % this.nbOfBuckets;
-            v = Math.toIntExact(long_v);
-            v = v & (this.nbOfBuckets - 1);
-
-        }
-        
+    public int hash(String str){
+    	
+    	int v = HelperFunctions.posMod(MurmurHash.hash32(str, seed), nbOfBuckets);
         return v;
+        
     }
 
     /**

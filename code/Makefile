@@ -12,17 +12,17 @@ SMALL_DATA=../data/dataSubset/index_small
 SMALL_PERIOD=100
 SMALL_OUT=small
 
-DATA=/cw/bdap/assignment3/Data/index
+DATA=/cw/bdap/retake1/Data/index
 PERIOD=1000
 OUT=out
 
 STOPWORDS=./stop-word-list_stanford.txt
 
-MAX_N=3
+MAX_N=4
 LOG_NB_BUCKETS=15
 NB_HASHES=5
 THRESHOLD=0.5
-LEARNING_RATE=0.001
+LEARNING_RATE=0.01
 
 # Compilation  ###############################################################
 

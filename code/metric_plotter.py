@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import glob
 
 def main():
-    data_path = '..\\.\\output\\SMALL\\PLOT\\'
+    data_path = '..\\.\\output\\OUT\\PLOT\\'
     models = {'pfh': 'Perceptron FH',
               'pcms': 'Perceptron PCMS',
               'nbfh': 'Naive Bayes FH',
@@ -34,13 +34,13 @@ def main():
             ax.plot(plot_df.training_samples, 
                     plot_df.metric_name, 
                     color = PLOT_COLORS[plot_color],
-                    marker = 'o',
+                    #marker = 'o',
                     linestyle = '-',
                     label = model_name)
             plot_color += 1
         ax.set_xlabel('No. Training Samples')
         ax.set_ylabel(plot_metric_names[i])
-        ax.legend(loc="upper right")
+        ax.legend(loc="lower right")
         i += 1
     plt.legend()
     plt.show()
