@@ -18,12 +18,11 @@ OUT=out
 
 STOPWORDS=./stop-word-list_stanford.txt
 
-MAX_N=4
-LOG_NB_BUCKETS=15
-NB_HASHES=5
+MAX_N=2
+LOG_NB_BUCKETS=20
+NB_HASHES=10
 THRESHOLD=0.5
-LEARNING_RATE=0.01
-
+LEARNING_RATE=0.0001
 # Compilation  ###############################################################
 
 ## Locate directories
